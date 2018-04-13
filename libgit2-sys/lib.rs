@@ -25,6 +25,8 @@ pub const GIT_PROXY_OPTIONS_VERSION: c_uint = 1;
 pub const GIT_SUBMODULE_UPDATE_OPTIONS_VERSION: c_uint = 1;
 pub const GIT_ODB_BACKEND_VERSION: c_uint = 1;
 pub const GIT_REFDB_BACKEND_VERSION: c_uint = 1;
+pub const GIT_WORKTREE_PRUNE_OPTIONS_VERSION: c_uint = 1;
+pub const GIT_WORKTREE_ADD_OPTIONS_VERSION: c_uint = 1;
 
 macro_rules! git_enum {
     (pub enum $name:ident { $($variants:tt)* }) => {
@@ -1534,6 +1536,26 @@ git_enum! {
     }
 }
 
+git_enum! {
+    pub enum git_worktree_prune_t {
+        GIT_WORKTREE_PRUNE_VALID = 1 << 0,
+        GIT_WORKTREE_PRUNE_LOCKED = 1 << 1,
+        GIT_WORKTREE_PRUNE_WORKING_TREE = 1 << 2,
+    }
+}
+
+#[repr(C)]
+pub struct git_worktree_prune_options {
+    pub version: c_uint,
+    pub flags: c_uint,
+}
+
+#[repr(C)]
+pub struct git_worktree_add_options {
+    pub version: c_uint,
+    pub lock: c_int,
+}
+
 #[repr(C)]
 pub struct git_stash_apply_options {
     pub version: c_uint,
@@ -2958,6 +2980,21 @@ extern {
     pub fn git_refdb_set_backend(refdb: *mut git_refdb, backend: *mut git_refdb_backend) -> c_int;
     pub fn git_refdb_compress(refdb: *mut git_refdb) -> c_int;
     pub fn git_refdb_free(refdb: *mut git_refdb);
+
+    // worktree
+    pub fn git_worktree_list(out: *mut git_strarray, repo: *mut git_repository) -> c_int;
+    pub fn git_worktree_lookup(out: *mut *mut git_worktree, repo: *mut git_repository, name: *const c_char) -> c_int;
+    pub fn git_worktree_open_from_repository(out: *mut *mut git_worktree, repo: *mut git_repository) -> c_int;
+    pub fn git_worktree_free(wt: *mut git_worktree);
+    pub fn git_worktree_validate(wt: *const git_worktree) -> c_int;
+    pub fn git_worktree_add_init_options(opts: *mut git_worktree_add_options, version: c_uint) -> c_int;
+    pub fn git_worktree_add(out: *mut *mut git_worktree, repo: *mut git_repository, name: *const c_char, path: *const c_char, opts: *const git_worktree_add_options);
+    pub fn git_worktree_lock(wt: *mut git_worktree, reason: *mut c_char) -> c_int;
+    pub fn git_worktree_unlock(wt: *mut git_worktree) -> c_int;
+    pub fn git_worktree_is_locked(reason: *mut git_buf, wt: *const git_worktree) -> c_int;
+    pub fn git_worktree_prune_init_options(opts: *mut git_worktree_prune_options, version: c_uint) -> c_int;
+    pub fn git_worktree_is_prunable(wt: *mut git_worktree, opts: *mut git_worktree_prune_options) -> c_int;
+    pub fn git_worktree_prune(wt: *mut git_worktree, opts: *mut git_worktree_prune_options) -> c_int;
 }
 
 pub fn init() {

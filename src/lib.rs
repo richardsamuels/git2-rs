@@ -122,6 +122,7 @@ pub use tree::{Tree, TreeEntry, TreeIter};
 pub use treebuilder::TreeBuilder;
 pub use odb::{Odb, OdbObject, OdbReader, OdbWriter};
 pub use util::IntoCString;
+pub use worktree::{Worktree, WorktreePruneOptions};
 
 /// An enumeration of possible errors that can happen when working with a git
 /// repository.
@@ -578,6 +579,7 @@ mod tag;
 mod time;
 mod tree;
 mod treebuilder;
+mod worktree;
 
 fn init() {
     static INIT: Once = ONCE_INIT;

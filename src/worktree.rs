@@ -1,8 +1,7 @@
-use std::ptr;
 use std::mem;
-use std::ffi::CString;
-use {raw, Error, Repository};
+use std::ptr;
 use util::Binding;
+use {raw, Buf, Error, Repository};
 
 /// An external git worktree, i.e. one located out of the github repository
 ///
@@ -30,32 +29,36 @@ impl Worktree {
     }
 
     /// Check if a working tree is locked
-    pub fn is_locked(&self) -> bool {
-        unsafe { raw::git_worktree_is_locked(ptr::null_mut(), self.raw) > 0 }
+    ///
+    /// Returns a tuple indicated lock status and the reason for locking, which
+    /// may be empty
+    pub fn is_locked(&self) -> Result<(bool, Buf), Error> {
+        let buf = Buf::new();
+        unsafe {
+            let ret = try_call!(raw::git_worktree_is_locked(buf.raw(), self.raw));
+            Ok((ret > 0, buf))
+        }
     }
 
     /// Lock the work tree, optionally with the given reason, if it is not already locked
     pub fn lock(&self, reason: Option<&str>) -> Result<(), Error> {
-        let why = match reason {
-            None => ptr::null(),
-            Some(reason) => try!(CString::new(reason)).as_ptr(),
-        };
-
+        let reason = try!(::opt_cstr(reason));
         unsafe {
-            try_call!(raw::git_worktree_lock(self.raw, why));
+            try_call!(raw::git_worktree_lock(self.raw, reason));
         }
         Ok(())
     }
 
     /// Unlock a worktree.
     ///
-    /// If tree was successfully unlocked, returns Ok(true).
-    /// If the tree was already unlocked, returns Ok(false).
+    /// If tree was successfully unlocked, returns `Ok(true)`.
+    /// If the tree was already unlocked, returns `Ok(false)`.
     pub fn unlock(&self) -> Result<bool, Error> {
-        let ret = unsafe { try_call!(raw::git_worktree_unlock(self.raw)) };
-        Ok(ret == 0)
+        unsafe {
+            let ret = try_call!(raw::git_worktree_unlock(self.raw));
+            Ok(ret == 0)
+        }
     }
-
 
     /// Check if the work tree is prunable with the given options.
     ///
@@ -66,10 +69,10 @@ impl Worktree {
     /// * the worktree is locked. The `locked` flag will cause this
     ///   check to be ignored.
     ///
-    pub fn is_prunable(&self, opts: &WorktreePruneOptions) -> bool {
+    pub fn is_prunable(&self, opts: Option<&WorktreePruneOptions>) -> bool {
         unsafe {
-            let mut opts = opts.raw();
-            raw::git_worktree_is_prunable(self.raw, &mut opts) > 0
+            let opts: *mut _ = opts.map(|opts| &mut opts.raw() as *mut _).unwrap_or(ptr::null_mut());
+            raw::git_worktree_is_prunable(self.raw, opts) >= 0
         }
     }
 
@@ -77,10 +80,10 @@ impl Worktree {
     ///
     /// Only prunable working trees will be pruned, as determined by the
     /// WorktreePruneOptions flags
-    pub fn prune(&self, opts: &WorktreePruneOptions) -> Result<(), Error> {
+    pub fn prune(&self, opts: Option<&WorktreePruneOptions>) -> Result<(), Error> {
         unsafe {
-            let mut opts = opts.raw();
-            try_call!(raw::git_worktree_prune(self.raw, &mut opts));
+            let opts: *mut _ = opts.map(|opts| &mut opts.raw() as *mut _).unwrap_or(ptr::null_mut());
+            try_call!(raw::git_worktree_prune(self.raw, opts));
         }
         Ok(())
     }
@@ -149,7 +152,10 @@ impl WorktreePruneOptions {
     pub unsafe fn raw(&self) -> raw::git_worktree_prune_options {
         let mut opts = mem::zeroed();
         assert_eq!(
-            raw::git_worktree_prune_init_options(&mut opts, raw::GIT_WORKTREE_PRUNE_OPTIONS_VERSION),
+            raw::git_worktree_prune_init_options(
+                &mut opts,
+                raw::GIT_WORKTREE_PRUNE_OPTIONS_VERSION
+            ),
             0
         );
         opts.flags = self.flags;
@@ -157,12 +163,13 @@ impl WorktreePruneOptions {
     }
 }
 
-/// Options which can be used to configure how a worktree is initialised
-pub struct WorktreeInitOptions {}
+/// Options which can be used to configure how a worktree is initialized
+pub struct WorktreeAddOptions {}
 
-impl WorktreeInitOptions {
+impl WorktreeAddOptions {
+    /// Creates a default set of initialization options.
     pub fn new() -> Self {
-        WorktreeInitOptions {}
+        WorktreeAddOptions {}
     }
 
     /// Creates a set of raw init options to be used with
@@ -177,5 +184,147 @@ impl WorktreeInitOptions {
             0
         );
         opts
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::fs::remove_dir_all;
+    use {raw, Repository, Worktree};
+
+    fn worktree_init(repo: &Repository, mut path: PathBuf, name: &str) -> (PathBuf, Worktree) {
+        path.push(name);
+        let wt = repo.worktree(name, &path, None).unwrap();
+
+        (path, wt)
+    }
+
+    #[test]
+    fn from_repo() {
+        let (td, repo) = ::test::repo_init();
+
+        let (wt_path, _) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
+
+        // Opening the main repo as a worktree should fail
+        assert!(Worktree::from_repo(&repo).is_err());
+
+        let wt_repo = Repository::open(wt_path).unwrap();
+        assert!(Worktree::from_repo(&wt_repo).is_ok());
+    }
+
+
+    #[test]
+    fn is_valid() {
+        // delete the main repository, shouldn't be valid
+        {
+            let (td, repo) = ::test::repo_init();
+
+            let (_, wt) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
+            assert!(wt.is_valid());
+
+            assert!(td.close().is_ok());
+            assert!(!wt.is_valid());
+        }
+        {
+            let (td, repo) = ::test::repo_init();
+
+            let (wt_path, wt) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
+            assert!(wt.is_valid());
+
+            assert!(remove_dir_all(&wt_path).is_ok());
+            // still valid because the parent repo's worktree references are present
+            assert!(wt.is_valid());
+        }
+    }
+
+    #[test]
+    fn lock() {
+            let (td, repo) = ::test::repo_init();
+            let (_, wt) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
+            let (locked, reason) = wt.is_locked().unwrap();
+            assert!(!locked);
+            assert_eq!(reason.as_str().unwrap().len(), 0);
+            //assert!(!wt.unlock().unwrap()); TODO
+
+            let (locked, reason) = wt.is_locked().unwrap();
+            assert!(!locked);
+            assert_eq!(reason.as_str().unwrap().len(), 0);
+
+            // locking an unlocked worktree locks
+            assert!(wt.lock(Some("first lock")).is_ok());
+            let (locked, reason) = wt.is_locked().unwrap();
+            assert!(locked);
+            assert_eq!(reason.as_str().unwrap(), "first lock");
+
+            // locking a locked worktree doesn't change reason
+            assert!(wt.lock(Some("second lock")).is_err());
+            let (locked, reason) = wt.is_locked().unwrap();
+            assert!(locked);
+            assert_eq!(reason.as_str().unwrap(), "first lock");
+            assert!(wt.unlock().unwrap());
+
+            // lock with no reason
+            assert!(wt.lock(None).is_ok());
+            let (locked, reason) = wt.is_locked().unwrap();
+            assert!(locked);
+            assert_eq!(reason.as_str().unwrap().len(), 0);
+            assert!(wt.unlock().unwrap());
+            assert!(!wt.unlock().unwrap());
+            assert!(!wt.unlock().unwrap());
+    }
+
+    #[test]
+    fn prune() {
+            let (td, repo) = ::test::repo_init();
+            let (_, wt) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
+            assert!(wt.lock(None).is_ok());
+
+            {
+                let mut opts = ::WorktreePruneOptions::new();
+                assert!(wt.is_valid());
+                assert!(!wt.is_prunable(Some(&opts)));
+                opts.valid(true);
+                assert!(wt.is_prunable(Some(&opts)));
+            }
+            {
+                let mut opts = ::WorktreePruneOptions::new();
+                assert!(wt.lock(None).is_ok());
+                assert!(!wt.is_prunable(Some(&opts)));
+                opts.locked(true);
+                assert!(wt.is_prunable(Some(&opts)));
+            }
+            {
+                let mut opts = ::WorktreePruneOptions::new();
+                opts.working_tree(true);
+                assert!(wt.prune(Some(&opts)).is_ok());
+                assert!(!wt.is_valid());
+            }
+    }
+
+    #[test]
+    fn options() {
+        let mut opts = ::WorktreePruneOptions::new();
+        assert_eq!(opts.flags, 0);
+        unsafe {
+            let raw = opts.raw();
+            assert_eq!(raw.version, raw::GIT_WORKTREE_PRUNE_OPTIONS_VERSION);
+            assert_eq!(raw.flags, 0);
+        }
+
+        opts.valid(true);
+        assert_eq!(opts.flags, 1);
+        opts.valid(false);
+        assert_eq!(opts.flags, 0);
+
+        opts.locked(true);
+        assert_eq!(opts.flags, 2);
+        opts.locked(false);
+        assert_eq!(opts.flags, 0);
+
+        opts.working_tree(true);
+        assert_eq!(opts.flags, 4);
+        opts.working_tree(false);
+        assert_eq!(opts.flags, 0);
     }
 }

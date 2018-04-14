@@ -19,6 +19,7 @@ use stash::{StashApplyOptions, StashCbData, stash_cb};
 use string_array::StringArray;
 use oid_array::OidArray;
 use util::{self, Binding};
+use {Worktree, WorktreeAddOptions};
 
 /// An owned git repository, representing all state associated with the
 /// underlying filesystem.
@@ -2051,6 +2052,44 @@ impl Repository {
         }
         Ok(ignored == 1)
     }
+
+    /// List worktrees in the given repository.
+    pub fn worktrees(&self) -> Result<StringArray, Error> {
+        let mut arr = raw::git_strarray {
+            strings: 0 as *mut *mut c_char,
+            count: 0,
+        };
+        unsafe {
+            try_call!(raw::git_worktree_list(&mut arr, self.raw));
+            Ok(Binding::from_raw(arr))
+        }
+    }
+
+    /// Create a worktree in the given repository
+    pub fn worktree<P: AsRef<Path>>(&self, name: &str, path: P, opts: Option<&WorktreeAddOptions>) -> Result<Worktree, Error> {
+        let path = try!(path.as_ref().into_c_string());
+        let name = try!(name.into_c_string());
+        let mut ret = ptr::null_mut();
+        let mut opts_mut = ptr::null_mut();
+        unsafe {
+            if opts.is_some() {
+                opts_mut = &mut opts.unwrap().raw();
+            }
+
+            try_call!(raw::git_worktree_add(&mut ret, self.raw, name, path, opts_mut));
+            Ok(Binding::from_raw(ret))
+        }
+    }
+
+    /// Find a worktree in the given repository.
+    pub fn find_worktree(&self, name: &str) -> Result<Worktree, Error> {
+        let name = try!(name.into_c_string());
+        let mut ret = ptr::null_mut();
+        unsafe {
+            try_call!(raw::git_worktree_lookup(&mut ret, self.raw, name));
+            Ok(Binding::from_raw(ret))
+        }
+    }
 }
 
 impl Binding for Repository {
@@ -2539,5 +2578,32 @@ mod tests {
 
         let _ = repo.clear_ignore_rules();
         assert!(!repo.is_path_ignored(Path::new("/foo")).unwrap());
+    }
+
+    #[test]
+    fn smoke_worktrees() {
+        let (td, repo) = graph_repo_init();
+
+        // fresh repos should have no worktrees
+        assert_eq!(repo.worktrees().unwrap().len(), 0);
+        assert!(repo.find_worktree("test").is_err());
+
+        {
+            let wt_path = td.path().join("worktree1");
+            {
+                let opts = ::WorktreeAddOptions::new();
+                let _ = repo.worktree("test", &wt_path, Some(&opts)).unwrap();
+                assert_eq!(repo.worktrees().unwrap().len(), 1);
+            }
+            {
+                assert!(repo.find_worktree("test").is_ok());
+                assert_eq!(repo.worktrees().unwrap().len(), 1);
+            }
+
+            assert!(fs::remove_dir_all(wt_path).is_ok());
+        }
+        assert!(repo.find_worktree("test").is_ok());
+        // a worktree can still be loaded after deleting it from disk
+        assert_eq!(repo.worktrees().unwrap().len(), 1);
     }
 }

@@ -122,7 +122,7 @@ pub use tree::{Tree, TreeEntry, TreeIter};
 pub use treebuilder::TreeBuilder;
 pub use odb::{Odb, OdbObject, OdbReader, OdbWriter};
 pub use util::IntoCString;
-pub use worktree::{Worktree, WorktreePruneOptions};
+pub use worktree::{Worktree, WorktreeAddOptions, WorktreePruneOptions};
 
 /// An enumeration of possible errors that can happen when working with a git
 /// repository.
@@ -240,6 +240,8 @@ pub enum ErrorClass {
     Rebase,
     /// Filesystem-related error
     Filesystem,
+    /// Worktree error
+    Worktree,
 }
 
 /// A listing of the possible states that a repository can be in.

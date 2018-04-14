@@ -149,6 +149,7 @@ impl Error {
             raw::GITERR_DESCRIBE => super::ErrorClass::Describe,
             raw::GITERR_REBASE => super::ErrorClass::Rebase,
             raw::GITERR_FILESYSTEM => super::ErrorClass::Filesystem,
+            raw::GITERR_WORKTREE => super::ErrorClass::Worktree,
             _ => super::ErrorClass::None,
         }
     }
@@ -229,6 +230,7 @@ impl Error {
             GITERR_DESCRIBE,
             GITERR_REBASE,
             GITERR_FILESYSTEM,
+            GITERR_WORKTREE,
         )
     }
 

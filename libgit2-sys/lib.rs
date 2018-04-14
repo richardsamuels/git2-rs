@@ -221,6 +221,8 @@ git_enum! {
         GITERR_DESCRIBE,
         GITERR_REBASE,
         GITERR_FILESYSTEM,
+        GITERR_PATCH,
+        GITERR_WORKTREE,
     }
 }
 
@@ -2988,8 +2990,8 @@ extern {
     pub fn git_worktree_free(wt: *mut git_worktree);
     pub fn git_worktree_validate(wt: *const git_worktree) -> c_int;
     pub fn git_worktree_add_init_options(opts: *mut git_worktree_add_options, version: c_uint) -> c_int;
-    pub fn git_worktree_add(out: *mut *mut git_worktree, repo: *mut git_repository, name: *const c_char, path: *const c_char, opts: *const git_worktree_add_options);
-    pub fn git_worktree_lock(wt: *mut git_worktree, reason: *mut c_char) -> c_int;
+    pub fn git_worktree_add(out: *mut *mut git_worktree, repo: *mut git_repository, name: *const c_char, path: *const c_char, opts: *const git_worktree_add_options) -> c_int;
+    pub fn git_worktree_lock(wt: *mut git_worktree, reason: *const c_char) -> c_int;
     pub fn git_worktree_unlock(wt: *mut git_worktree) -> c_int;
     pub fn git_worktree_is_locked(reason: *mut git_buf, wt: *const git_worktree) -> c_int;
     pub fn git_worktree_prune_init_options(opts: *mut git_worktree_prune_options, version: c_uint) -> c_int;

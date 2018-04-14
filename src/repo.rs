@@ -2602,8 +2602,10 @@ mod tests {
 
             assert!(fs::remove_dir_all(wt_path).is_ok());
         }
+
+        // a worktree's metadata is still present in the parent repo
+        // so it can still be listed/found
         assert!(repo.find_worktree("test").is_ok());
-        // a worktree can still be loaded after deleting it from disk
         assert_eq!(repo.worktrees().unwrap().len(), 1);
     }
 }

@@ -2607,5 +2607,15 @@ mod tests {
         // so it can still be listed/found
         assert!(repo.find_worktree("test").is_ok());
         assert_eq!(repo.worktrees().unwrap().len(), 1);
+
+        {
+            let wt_path = td.path().join("worktree1");
+                let mut opts = ::WorktreeAddOptions::new();
+                opts.lock(true);
+                let wt = repo.worktree("test2", &wt_path, Some(&opts)).unwrap();
+                let (locked, reason) = wt.is_locked().unwrap();
+                assert_eq!(reason.as_str().unwrap().len(), 0);
+                assert!(locked);
+        }
     }
 }

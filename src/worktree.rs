@@ -182,12 +182,20 @@ impl WorktreePruneOptions {
 }
 
 /// Options which can be used to configure how a worktree is initialized.
-pub struct WorktreeAddOptions {}
+pub struct WorktreeAddOptions {
+    lock: bool,
+}
 
 impl WorktreeAddOptions {
     /// Creates a default set of initialization options.
     pub fn new() -> Self {
-        WorktreeAddOptions {}
+        WorktreeAddOptions { lock: false }
+    }
+
+    /// After creating the worktree, lock it with no reason
+    pub fn lock(&mut self, active: bool) -> &Self {
+        self.lock = active;
+        self
     }
 
     /// Creates a set of raw init options to be used as
@@ -198,6 +206,7 @@ impl WorktreeAddOptions {
             raw::git_worktree_add_init_options(&mut opts, raw::GIT_WORKTREE_ADD_OPTIONS_VERSION),
             0
         );
+        opts.lock = self.lock as i32;
         opts
     }
 }

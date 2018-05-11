@@ -3,7 +3,7 @@ use std::ptr;
 use util::Binding;
 use {raw, Buf, Error, Repository};
 
-/// An external git worktree, i.e. one located out of the github repository
+/// A git worktree, i.e. the directory where a branch is checked out.
 ///
 /// This structure corresponds to a `git_worktree` in libgit2.
 ///
@@ -14,7 +14,7 @@ pub struct Worktree {
 }
 
 impl Worktree {
-    /// Create a `Worktree` from a `Repository`
+    /// Create a `Worktree` from a `Repository`.
     pub fn from_repo<'repo>(repo: &'repo Repository) -> Result<Self, Error> {
         let mut ret = ptr::null_mut();
         unsafe {
@@ -39,9 +39,17 @@ impl Worktree {
 
     /// Check if a `Worktree` is locked
     ///
+    /// Returns true if the worktree is locked. To get the lock reason, use
+    /// `get_lock`
+    pub fn is_locked(&self) -> bool {
+        unsafe { raw::git_worktree_is_locked(ptr::null_mut(), self.raw) != 0 }
+    }
+
+    /// Check if a `Worktree` is locked
+    ///
     /// Returns a tuple indicated lock status and the reason for locking, which
     /// may be empty
-    pub fn is_locked(&self) -> Result<(bool, Buf), Error> {
+    pub fn get_lock(&self) -> Result<(bool, Buf), Error> {
         let buf = Buf::new();
         unsafe {
             let ret = try_call!(raw::git_worktree_is_locked(buf.raw(), self.raw));
@@ -267,20 +275,23 @@ mod tests {
         {
             let (td, repo) = ::test::repo_init();
             let (_, wt) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
-            let (locked, reason) = wt.is_locked().unwrap();
+            let (locked, reason) = wt.get_lock().unwrap();
             assert!(!locked);
             assert_eq!(reason.as_str().unwrap().len(), 0);
+            assert!(!wt.is_locked());
 
             assert!(wt.lock(Some("first lock")).is_ok());
-            let (locked, reason) = wt.is_locked().unwrap();
+            let (locked, reason) = wt.get_lock().unwrap();
             assert!(locked);
             assert_eq!(reason.as_str().unwrap(), "first lock");
+            assert!(wt.is_locked());
 
             // and unlocking works too
             assert!(wt.unlock().unwrap());
-            let (locked, reason) = wt.is_locked().unwrap();
+            let (locked, reason) = wt.get_lock().unwrap();
             assert!(!locked);
             assert_eq!(reason.as_str().unwrap().len(), 0);
+            assert!(!wt.is_locked());
         }
 
         // lock w/ reason
@@ -289,15 +300,17 @@ mod tests {
             let (_, wt) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
 
             assert!(wt.lock(Some("first lock")).is_ok());
-            let (locked, reason) = wt.is_locked().unwrap();
+            let (locked, reason) = wt.get_lock().unwrap();
             assert!(locked);
             assert_eq!(reason.as_str().unwrap(), "first lock");
+            assert!(wt.is_locked());
 
             // locking a locked worktree doesn't change reason
             assert!(wt.lock(Some("second lock")).is_err());
-            let (locked, reason) = wt.is_locked().unwrap();
+            let (locked, reason) = wt.get_lock().unwrap();
             assert!(locked);
             assert_eq!(reason.as_str().unwrap(), "first lock");
+            assert!(wt.is_locked());
             assert!(wt.unlock().unwrap());
         }
 
@@ -307,9 +320,10 @@ mod tests {
             let (_, wt) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
 
             assert!(wt.lock(None).is_ok());
-            let (locked, reason) = wt.is_locked().unwrap();
+            let (locked, reason) = wt.get_lock().unwrap();
             assert!(locked);
             assert_eq!(reason.as_str().unwrap().len(), 0);
+            assert!(wt.is_locked());
             assert!(wt.unlock().unwrap());
         }
 
@@ -317,12 +331,14 @@ mod tests {
         {
             let (td, repo) = ::test::repo_init();
             let (_, wt) = worktree_init(&repo, td.path().to_path_buf(), "wt1");
-            let (locked, _) = wt.is_locked().unwrap();
+            let (locked, _) = wt.get_lock().unwrap();
             assert!(!locked);
+            assert!(!wt.is_locked());
 
             assert!(wt.unlock().unwrap());
-            let (locked, _) = wt.is_locked().unwrap();
+            let (locked, _) = wt.get_lock().unwrap();
             assert!(!locked);
+            assert!(!wt.is_locked());
         }
     }
 

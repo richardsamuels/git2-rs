@@ -2613,9 +2613,7 @@ mod tests {
                 let mut opts = ::WorktreeAddOptions::new();
                 opts.lock(true);
                 let wt = repo.worktree("test2", &wt_path, Some(&opts)).unwrap();
-                let (locked, reason) = wt.is_locked().unwrap();
-                assert_eq!(reason.as_str().unwrap().len(), 0);
-                assert!(locked);
+                assert!(wt.is_locked());
         }
     }
 }
